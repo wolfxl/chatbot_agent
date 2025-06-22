@@ -1,1 +1,1 @@
-# Agents module
+# LangGraph agents package 

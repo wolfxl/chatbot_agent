@@ -26,6 +26,38 @@ body {
   text-align: center;
 }
 
+.provider-selector {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+
+.provider-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid white;
+  background-color: transparent;
+  color: white;
+  border-radius: 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.provider-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.provider-btn.active {
+  background-color: white;
+  color: #2563eb;
+}
+
+.provider-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .session-info {
   font-size: 0.8rem;
   opacity: 0.8;
@@ -59,6 +91,120 @@ body {
   background-color: #e5e7eb;
   color: black;
   align-self: flex-start;
+}
+
+/* Formatted content styles for HTML rendering */
+.formatted-content {
+  line-height: 1.5;
+}
+
+.formatted-content h1,
+.formatted-content h2,
+.formatted-content h3,
+.formatted-content h4,
+.formatted-content h5,
+.formatted-content h6 {
+  margin: 0.5rem 0;
+  font-weight: bold;
+  color: inherit;
+}
+
+.formatted-content h1 { font-size: 1.5rem; }
+.formatted-content h2 { font-size: 1.3rem; }
+.formatted-content h3 { font-size: 1.1rem; }
+.formatted-content h4 { font-size: 1rem; }
+.formatted-content h5 { font-size: 0.9rem; }
+.formatted-content h6 { font-size: 0.8rem; }
+
+.formatted-content p {
+  margin: 0.5rem 0;
+}
+
+.formatted-content ul,
+.formatted-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.formatted-content li {
+  margin: 0.25rem 0;
+}
+
+.formatted-content strong,
+.formatted-content b {
+  font-weight: bold;
+}
+
+.formatted-content em,
+.formatted-content i {
+  font-style: italic;
+}
+
+.formatted-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.formatted-content a:hover {
+  color: #1d4ed8;
+}
+
+.formatted-content blockquote {
+  border-left: 3px solid #2563eb;
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.formatted-content code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.2rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.formatted-content pre {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.formatted-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.formatted-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.formatted-content th,
+.formatted-content td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.formatted-content th {
+  background-color: rgba(37, 99, 235, 0.1);
+  font-weight: bold;
+}
+
+.formatted-content hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 1rem 0;
+}
+
+/* Plain content styles */
+.plain-content {
+  line-height: 1.5;
 }
 
 .chat-input {
@@ -98,4 +244,43 @@ body {
 .chat-input button:disabled {
   background-color: #9ca3af;
   cursor: not-allowed;
+}
+
+.agent-selector {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+
+.agent-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid white;
+  background-color: transparent;
+  color: white;
+  border-radius: 1rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.3s ease;
+}
+
+.agent-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.agent-btn.active {
+  background-color: white;
+  color: #2563eb;
+}
+
+.agent-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-indicator {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-top: 0.5rem;
+  font-style: italic;
 }
