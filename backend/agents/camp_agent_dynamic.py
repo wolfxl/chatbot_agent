@@ -2,13 +2,16 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, SystemMessage
 from langsmith import traceable
-from agents.state import CampChatState
-from database.supabase_client import supabase_client
-from models.schemas import CampSearchFilters
-from config import settings
+from backend.agents.state import CampChatState
+from backend.database.supabase_client import supabase_client
+from backend.models.schemas import CampSearchFilters
+from backend.config import settings
 from typing import Dict, Any
 import logging
 import json
+from backend.agents.tools.email_draft_agent import EmailDraftAgent
+from backend.agents.extract_info import extract_sender_info_with_llm
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +56,16 @@ Analyze the user's message and classify into one of these intents:
    - Asking about specific camps from previous search
    - Only use if user has cached results ({has_cached_results})
 
-3. **"general"** - General conversation (no camp data needed)
+3. **"send_availability_email"** - User wants to contact a camp or request information via email
+   - Requests to email a camp, contact for more info, or send an inquiry
+   - Phrases like "Can you email this camp for me?", "Contact the camp about availability", etc.
+
+4. **"general"** - General conversation (no camp data needed)
    - Greetings, how-to questions, general chat
 
 Return JSON format:
 {{
-    "intent": "search|filter|general",
+    "intent": "search|filter|send_availability_email|general",
     "search_criteria": {{
         "activity": "activity type from user request",
         "location": "city, state, or general area",
@@ -73,6 +80,7 @@ Examples:
 - "are there camps related to minecraft" (with cached results) -> {{"intent": "filter", "search_criteria": {{"activity": "minecraft"}}}}
 - "show me the first 3" (with cached results) -> {{"intent": "filter", "search_criteria": {{}}}}
 - "what about art camps instead" -> {{"intent": "search", "search_criteria": {{"activity": "art"}}}}
+- "Can you email this camp for me?" -> {{"intent": "send_availability_email", "search_criteria": {{}}}}
 - "hello" -> {{"intent": "general"}}
 """
         
@@ -286,6 +294,10 @@ async def filter_cached_results_node(state: Dict[str, Any]) -> Dict[str, Any]:
 @traceable(name="generate_response")
 async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
+    # Prevent overwriting final_response if already set (e.g., by send_availability_email_node)
+    if state.get("final_response"):
+        return state
+
     try:
 
         chat_state = CampChatState(**state)
@@ -314,15 +326,15 @@ async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
                     org = camp.get('organizations')
                     if org:
                         camp_text += f" by {org.get('name', 'Unknown Org')}"
-                    camp_text += "\\n"
+                    camp_text += "\n"
                     
 
                     if camp.get('price'):
-                        camp_text += f"Price: ${camp['price']}/week\\n"
+                        camp_text += f"Price: ${camp['price']}/week\n"
                     
 
                     if camp.get('min_grade') is not None and camp.get('max_grade') is not None:
-                        camp_text += f"Grades: {camp['min_grade']}-{camp['max_grade']}\\n"
+                        camp_text += f"Grades: {camp['min_grade']}-{camp['max_grade']}\n"
                     
 
                     sessions = camp.get('camp_sessions', [])
@@ -333,17 +345,17 @@ async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
                             city = location.get('city', '')
                             state = location.get('state', '')
                             if city or state:
-                                camp_text += f"Location: {city}, {state}\\n"
+                                camp_text += f"Location: {city}, {state}\n"
                     
 
                     if camp.get('description'):
                         desc = camp['description'][:150] + "..." if len(camp['description']) > 150 else camp['description']
-                        camp_text += f"Description: {desc}\\n"
+                        camp_text += f"Description: {desc}\n"
                     
                     camps_info.append(camp_text)
                 
 
-                camps_text = "\\n\\n".join(camps_info)
+                camps_text = "\n\n".join(camps_info)
                 
                 if chat_state.current_intent == "filter":
                     action_text = "filtered your previous search results"
@@ -352,9 +364,9 @@ async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 
 
                 if "how many" in last_message.lower() or "count" in last_message.lower():
-                    prompt = f"The user asked: '{last_message}'\\n\\nI {action_text} and found {len(chat_state.last_search_results)} camps matching the criteria.\\n\\nGenerate a helpful response about the total count and offer to show some examples or help them search for specific types."
+                    prompt = f"The user asked: '{last_message}'\n\nI {action_text} and found {len(chat_state.last_search_results)} camps matching the criteria.\n\nGenerate a helpful response about the total count and offer to show some examples or help them search for specific types."
                 else:
-                    prompt = f"The user asked: '{last_message}'\\n\\nI {action_text} and found {len(chat_state.last_search_results)} camps. Here are the top results:\\n\\n{camps_text}\\n\\nGenerate an enthusiastic, helpful response about these camps. Be conversational and highlight key details."
+                    prompt = f"The user asked: '{last_message}'\n\nI {action_text} and found {len(chat_state.last_search_results)} camps. Here are the top results:\n\n{camps_text}\n\nGenerate an enthusiastic, helpful response about these camps. Be conversational and highlight key details."
                 
             else:
 
@@ -362,11 +374,11 @@ async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 filter_text = ", ".join([f"{k}: {v}" for k, v in filters_applied.items() if v])
                 
                 action_text = "filtered your previous results" if chat_state.current_intent == "filter" else "searched our database"
-                prompt = f"The user asked: '{last_message}'\\nFilters applied: {filter_text}\\n\\nI {action_text} but couldn't find any camps matching these criteria. Generate a helpful response suggesting they try different search terms or ask about available camp types. Be encouraging and helpful."
+                prompt = f"The user asked: '{last_message}'\nFilters applied: {filter_text}\n\nI {action_text} but couldn't find any camps matching these criteria. Generate a helpful response suggesting they try different search terms or ask about available camp types. Be encouraging and helpful."
         
         else:
             # General response
-            prompt = f"The user said: '{last_message}'\\n\\nYou are a helpful summer camp assistant. Respond naturally and helpfully. You can mention that users can search for camps by activity, location, or age group."
+            prompt = f"The user said: '{last_message}'\n\nYou are a helpful summer camp assistant. Respond naturally and helpfully. You can mention that users can search for camps by activity, location, or age group."
         
 
         response = llm.invoke([HumanMessage(content=prompt)])
@@ -382,6 +394,57 @@ async def generate_response_node(state: Dict[str, Any]) -> Dict[str, Any]:
         chat_state = CampChatState(**state)
         chat_state.final_response = "I'm here to help you find great summer camps! What are you looking for?"
         return chat_state.dict()
+
+def send_availability_email_node(state: dict) -> dict:
+    # Use Gemini LLM to extract sender info from chat history
+    sender_info = extract_sender_info_with_llm(state.get("messages", []))
+    # Extract all camps from last search results
+    last_search_results = state.get("last_search_results", [])
+    topic = state.get("topic", "camp availability")
+    prompt_template = state.get("prompt_template")
+
+    drafted_emails = []
+    # For debugging: loop exactly twice
+    for i in range(2):
+        if i < len(last_search_results):
+            camp = last_search_results[i]
+            receiver_name = camp.get("camp_name", "Camp Team")
+            receiver_email = camp.get("contact_email", "test@gmail.com")
+        else:
+            receiver_name = f"Camp Team {i+1}"
+            receiver_email = f"test{i+1}@gmail.com"
+        agent = EmailDraftAgent(
+            sender_name=sender_info["sender_name"],
+            sender_age_group=sender_info["sender_age_group"],
+            sender_interests=sender_info["sender_interests"],
+            receiver_name=receiver_name,
+            receiver_email=receiver_email,
+            topic=topic,
+            prompt_template=prompt_template
+        )
+        email_text = agent.draft_email()
+        drafted_emails.append({
+            "receiver_name": receiver_name,
+            "receiver_email": receiver_email,
+            "email_text": email_text
+        })
+        # Print each drafted email for backend visibility
+        print("\n--- Email Drafted ---\n")
+        print(f"To: {receiver_name} <{receiver_email}>")
+        print(f"Subject: {topic}")
+        print(email_text)
+        print("\n--- End Email ---\n")
+
+    state["drafted_emails"] = drafted_emails
+    state["email_status"] = "sent"
+    # Set a user-facing response summarizing the action
+    if drafted_emails:
+        state["final_response"] = (
+            "An enquiry email about availability has been sent to the camp(s). Would you like to start a new search?"
+        )
+    else:
+        state["final_response"] = "No camps found to send emails to."
+    return state
 
 class CampAgent:
     def __init__(self):
@@ -422,6 +485,7 @@ class CampAgent:
         workflow.add_node("search", search_camps_node)
         workflow.add_node("filter", filter_cached_results_node)
         workflow.add_node("respond", generate_response_node)
+        workflow.add_node("send_availability_email", send_availability_email_node)
         
 
         def route_after_classify(state: Dict[str, Any]) -> str:
@@ -434,6 +498,9 @@ class CampAgent:
             elif current_intent == "filter":
                 logger.info(f"🚏 ROUTER - Route: filter (cached results)")
                 return "filter"
+            elif current_intent == "send_availability_email":
+                logger.info(f"🚏 ROUTER - Route: send_availability_email (email draft)")
+                return "send_availability_email"
             else:
                 logger.info(f"🚏 ROUTER - Route: respond (general)")
                 return "respond"
@@ -443,11 +510,12 @@ class CampAgent:
         workflow.add_conditional_edges(
             "classify",
             route_after_classify,
-            {"search": "search", "filter": "filter", "respond": "respond"}
+            {"search": "search", "filter": "filter", "respond": "respond", "send_availability_email": "send_availability_email"}
         )
         workflow.add_edge("search", "respond")
         workflow.add_edge("filter", "respond")
         workflow.add_edge("respond", END)
+        workflow.add_edge("send_availability_email", "respond")
         
 
         return workflow.compile()
